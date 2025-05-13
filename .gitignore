@@ -1,0 +1,8 @@
+.vscode
+.idea
+
+.env
+
+data/
+
+config/config.yaml
