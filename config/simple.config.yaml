@@ -4,6 +4,10 @@
 # global_settings:
 #   default_local_base_path: "./collected_configs/"
 
+batch_size: 5 # 并发数
+
+timeout: 5 # 超时时间
+
 machines:
   - alias: "webserver_01"  # 给机器起个别名，方便识别
     host: "10.0.0.1"

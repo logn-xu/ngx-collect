@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -145,4 +146,38 @@ func generereLocalPath(fsPath string, remotePath string) string {
 	fullRemotePath := filepath.Clean(remotePath)
 	dir := filepath.Dir(fullRemotePath)
 	return strings.Replace(fsPath, dir, "", 1)
+}
+
+func GetNginxConfig(ctx context.Context, m config.MachineConfig) <-chan struct{} {
+	done := make(chan struct{})
+
+	go func() {
+		c := NewCollecter(m)
+		defer c.Close()
+
+		// time.Sleep(time.Second * 8)
+
+		if err := c.Connect(); err != nil {
+			log.Errorf("collecter connect faild: %v", err)
+			return
+		}
+
+		if err := c.Fetch(); err != nil {
+			log.Errorf("collecter fetch faild: %v", err)
+			return
+		}
+
+		// signal done
+		close(done)
+		// done <- struct{}{}
+	}()
+
+	select {
+	case <-ctx.Done():
+		log.Errorf("collecting %s-%s timeout", m.Alias, m.Host)
+	case <-done:
+		log.Infof("collecting %s-%s done", m.Alias, m.Host)
+	}
+
+	return done
 }

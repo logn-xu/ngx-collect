@@ -13,7 +13,9 @@ type MachineConfig struct {
 }
 
 type Config struct {
-	Machines []MachineConfig `mapstructure:"machines"`
+	Machines  []MachineConfig `mapstructure:"machines"`
+	BatchSize int             `mapstructure:"batch_size"`
+	Timeout   int             `mapstructure:"timeout"`
 }
 
 var AppConfig Config
