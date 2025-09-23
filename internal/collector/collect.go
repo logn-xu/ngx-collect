@@ -118,6 +118,13 @@ func (c *CollecterImpl) downloadFile(fs *fs.Walker, remotePath string) error {
 	}
 	defer srcFile.Close()
 
+	// get remote file info
+	info, err := srcFile.Stat()
+	if err != nil {
+		log.Errorf("stat remote file failed: %v", err)
+		return err
+	}
+
 	// create local file
 	localFile, err := os.Create(c.localBasePath + "/" + localPath)
 	if err != nil {
@@ -130,6 +137,13 @@ func (c *CollecterImpl) downloadFile(fs *fs.Walker, remotePath string) error {
 		log.Errorf("copy file failed: %v", err)
 		return err
 	}
+
+	// set file permission
+	if err := os.Chmod(localFile.Name(), info.Mode()); err != nil {
+		log.Errorf("chmod local file failed: %v", err)
+		return err
+	}
+
 	return nil
 }
 
