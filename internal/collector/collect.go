@@ -3,16 +3,13 @@ package collector
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/kr/fs"
 	"github.com/logn/ngx-collect/internal/config"
 	"github.com/logn/ngx-collect/internal/sshclient"
-	"github.com/pkg/sftp"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
 )
 
 type Collecter interface {
@@ -23,7 +20,7 @@ type Collecter interface {
 
 type CollecterImpl struct {
 	config        config.MachineConfig
-	client        *sftp.Client
+	sshClient     *ssh.Client
 	localBasePath string
 }
 
@@ -43,16 +40,11 @@ func (c *CollecterImpl) Connect() error {
 		return err
 	}
 
-	client, err := sftp.NewClient(sshClient)
-	if err != nil {
-		return err
-	}
-
-	c.client = client
+	c.sshClient = sshClient
 	return nil
 }
 
-// fetch nginx files
+// fetch nginx config by executing nginx -T command
 func (c *CollecterImpl) Fetch() error {
 	// create local base path
 	if err := c.CreateBaseDestDir(); err != nil {
@@ -60,41 +52,41 @@ func (c *CollecterImpl) Fetch() error {
 		return err
 	}
 
-	// for each file in remote path
-	for _, remotePath := range c.config.RemotePaths {
-		// enter sub dir
-		fs := c.client.Walk(remotePath)
-		for fs.Step() {
-			if fs.Err() != nil {
-				log.Errorf("walk failed: %v", fs.Err())
-				continue
-			}
+	// execute nginx -T -c <config_file> to get running configuration
+	cmd := fmt.Sprintf("%s -T -c %s", c.config.NginxExecBin, c.config.NginxMainConfig)
+	log.Infof("Executing command: %s", cmd)
 
-			// log.Infof(fs.Path())
-			f, err := c.client.Stat(fs.Path())
-			if err != nil {
-				log.Errorf("stat failed: %v", err)
-				continue
-			}
+	// create SSH session
+	session, err := c.sshClient.NewSession()
+	if err != nil {
+		log.Errorf("create SSH session failed: %v", err)
+		return err
+	}
+	defer session.Close()
 
-			switch f.IsDir() {
-			case true:
-				if err := c.downloadDir(fs, remotePath); err != nil {
-					log.Errorf("download file failed: %v", err)
-				}
-			case false:
-				if err := c.downloadFile(fs, remotePath); err != nil {
-					log.Errorf("download file failed: %v", err)
-				}
-			}
-		}
+	// execute command and get output
+	output, err := session.CombinedOutput(cmd)
+	if err != nil {
+		log.Errorf("execute nginx command failed: %v", err)
+		return err
 	}
 
+	// save output to local nginx.conf file
+	localConfigPath := filepath.Join(c.localBasePath, "nginx.conf")
+	if err := os.WriteFile(localConfigPath, output, 0644); err != nil {
+		log.Errorf("write nginx config file failed: %v", err)
+		return err
+	}
+
+	log.Infof("Nginx configuration saved to: %s", localConfigPath)
 	return nil
 }
 
 func (c *CollecterImpl) Close() error {
-	return c.client.Close()
+	if c.sshClient != nil {
+		return c.sshClient.Close()
+	}
+	return nil
 }
 
 // create base dir
@@ -106,60 +98,6 @@ func (c *CollecterImpl) CreateBaseDestDir() error {
 		return err
 	}
 	return nil
-}
-
-func (c *CollecterImpl) downloadFile(fs *fs.Walker, remotePath string) error {
-	localPath := generereLocalPath(fs.Path(), remotePath)
-	// get remote file
-	srcFile, err := c.client.OpenFile(fs.Path(), os.O_RDONLY)
-	if err != nil {
-		log.Errorf("open file failed: %v", err)
-		return err
-	}
-	defer srcFile.Close()
-
-	// get remote file info
-	info, err := srcFile.Stat()
-	if err != nil {
-		log.Errorf("stat remote file failed: %v", err)
-		return err
-	}
-
-	// create local file
-	localFile, err := os.Create(c.localBasePath + "/" + localPath)
-	if err != nil {
-		log.Errorf("create local file failed: %v", err)
-		return err
-	}
-	defer localFile.Close()
-	// copy file
-	if _, err := io.Copy(localFile, srcFile); err != nil {
-		log.Errorf("copy file failed: %v", err)
-		return err
-	}
-
-	// set file permission
-	if err := os.Chmod(localFile.Name(), info.Mode()); err != nil {
-		log.Errorf("chmod local file failed: %v", err)
-		return err
-	}
-
-	return nil
-}
-
-func (c *CollecterImpl) downloadDir(fs *fs.Walker, remotePath string) error {
-	localPath := generereLocalPath(fs.Path(), remotePath)
-	if err := os.MkdirAll(fmt.Sprintf("%s/%s", c.localBasePath, localPath), 0755); err != nil {
-		log.Errorf("create local dir failed: %v", err)
-		return err
-	}
-	return nil
-}
-
-func generereLocalPath(fsPath string, remotePath string) string {
-	fullRemotePath := filepath.Clean(remotePath)
-	dir := filepath.Dir(fullRemotePath)
-	return strings.Replace(fsPath, dir, "", 1)
 }
 
 func GetNginxConfig(ctx context.Context, m config.MachineConfig) <-chan struct{} {

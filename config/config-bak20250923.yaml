@@ -1,0 +1,45 @@
+# ngx-collect 配置文件示例
+
+# 全局设置 (可选, 比如默认的本地保存路径)
+# global_settings:
+#   default_local_base_path: "./collected_configs/"
+
+batch_size: 5 # 并发数
+
+timeout: 5 # 超时时间
+
+machines:
+  - alias: "webserver_01"  # 给机器起个别名，方便识别
+    host: "10.182.6.19"
+    port: 22             # SSH 端口，默认22
+    user: "nginx"
+    auth_method: "key"   # 'key' 或 'password'
+    key_path: "~/.ssh/id_rsa" # 如果 auth_method 是 'key'
+    # password: "your_password" # 如果 auth_method 是 'password' (不推荐直接写明文密码)
+    remote_paths: # 需要从这台机器拉取的 Nginx 配置文件路径列表
+      - "/app/nginx/conf/"
+      - "/app/nginx/sbin/"
+    local_destination: "./data/" # 这台机器的配置下载到本地的路径
+  
+  - alias: "webserver_01"  # 给机器起个别名，方便识别
+    host: "10.182.6.18"
+    port: 22             # SSH 端口，默认22
+    user: "nginx"
+    auth_method: "key"   # 'key' 或 'password'
+    key_path: "~/.ssh/id_rsa" # 如果 auth_method 是 'key'
+    # password: "your_password" # 如果 auth_method 是 'password' (不推荐直接写明文密码)
+    remote_paths: # 需要从这台机器拉取的 Nginx 配置文件路径列表
+      - "/app/nginx/conf/"
+    local_destination: "./data/" # 这台机器的配置下载到本地的路径
+
+  - alias: "webserver"  # 给机器起个别名，方便识别
+    host: "10.182.6.17"
+    port: 22             # SSH 端口，默认22
+    user: "nginx"
+    # auth_method: "key"   # 'key' 或 'password'
+    auth_method: "password"   # 'key' 或 'password'
+    # key_path: "~/.ssh/id_rsa" # 如果 auth_method 是 'key'
+    password: "nginx" # 如果 auth_method 是 'password' (不推荐直接写明文密码)
+    remote_paths: # 需要从这台机器拉取的 Nginx 配置文件路径列表
+      - "/app/nginx/conf/"
+    local_destination: "./data/" # 这台机器的配置下载到本地的路径
